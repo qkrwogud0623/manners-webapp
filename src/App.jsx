@@ -172,24 +172,16 @@ const Manners = () => {
 
 // 퀴즈
 const Quiz = () => {
-  const questions = mannersData
-    .filter(m => m.quiz)
-    .map(m => m.quiz);
+  const allQuestions = mannersData
+    .filter((m) => m.quiz)
+    .map((m, idx) => ({ ...m.quiz, id: m.id ?? idx }))
+    .sort(() => Math.random() - 0.5); // 🔥 랜덤 섞기 추가
 
+  // 이후 코드에서 allQuestions 를 사용하도록 수정
+  const [questions] = useState(allQuestions);
   const [current, setCurrent] = useState(0);
   const [score, setScore] = useState(0);
   const [showResult, setShowResult] = useState(false);
-
-  const saveScore = async (finalScore) => {
-    const username = localStorage.getItem("username") || "익명";
-    const { data, error } = await supabase.from("Ranking").insert([
-      {
-        username,
-        score: finalScore,
-        timestamp: new Date().toISOString()
-      }
-    ]);
-  };  
 
   const handleAnswer = async (selected) => {
     if (selected === questions[current].answer) {
@@ -201,32 +193,41 @@ const Quiz = () => {
         setShowResult(true);
       }
     } else {
-      await saveScore(score);  // 현재 점수 저장
+      await saveScore(score);
       setShowResult(true);
     }
   };
 
-  if (questions.length === 0) {
-    return (
-      <div style={containerStyle}>
-        <p>퀴즈 데이터가 없습니다.</p>
-      </div>
-    );
-  }
+  const saveScore = async (finalScore) => {
+    const username = localStorage.getItem("username") || "익명";
+    await supabase.from("Ranking").insert([
+      {
+        username,
+        score: finalScore,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+  };
+
+  useEffect(() => {
+    getRandomQuestion();
+  }, []);
+
+  if (!current && !showResult) return <div style={containerStyle}>문제를 불러오는 중...</div>;
 
   return (
     <div style={{ ...containerStyle, alignItems: "center" }}>
       <h1 style={{ fontSize: "1.75rem", fontWeight: "bold", marginBottom: "1rem" }}>예절 퀴즈</h1>
       {showResult ? (
         <div>
-          <h2>퀴즈 완료!</h2>
-          <p>맞힌 문제 수: {score} / {questions.length}</p>
+          <h2>퀴즈 종료!</h2>
+          <p>맞힌 문제 수: {score}</p>
         </div>
       ) : (
         <div>
-          <h2 style={{ marginBottom: "1rem" }}>{questions[current].question}</h2>
+          <h2 style={{ marginBottom: "1rem" }}>{current.question}</h2>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-            {questions[current].options.map((option, idx) => (
+            {current.options.map((option, idx) => (
               <button
                 key={idx}
                 onClick={() => handleAnswer(option)}
@@ -255,13 +256,13 @@ const Quiz = () => {
         <Link to="/">
           <button
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              backgroundColor: '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.375rem',
-              cursor: 'pointer'
+              padding: "0.75rem 1.5rem",
+              fontSize: "1rem",
+              backgroundColor: "#4b5563",
+              color: "white",
+              border: "none",
+              borderRadius: "0.375rem",
+              cursor: "pointer"
             }}
           >
             홈으로
@@ -280,14 +281,22 @@ const Ranking = () => {
     const fetchRanking = async () => {
       const { data, error } = await supabase
         .from("Ranking")
-        .select("*")
-        .order("score", { ascending: false })
-        .limit(10);
+        .select("username, score")
+        .order("score", { ascending: false });
 
-      if (error) {
-        console.error("랭킹 불러오기 실패:", error);
-      } else {
-        setRanking(data);
+      if (!error) {
+        const unique = new Map();
+        data.forEach((r) => {
+          if (!unique.has(r.username) || unique.get(r.username) < r.score) {
+            unique.set(r.username, r.score);
+          }
+        });
+
+        const sorted = [...unique.entries()]
+          .map(([username, score]) => ({ username, score }))
+          .sort((a, b) => b.score - a.score);
+
+        setRanking(sorted);
       }
     };
 
@@ -295,31 +304,71 @@ const Ranking = () => {
   }, []);
 
   return (
-    <div style={{ ...containerStyle, alignItems: "center" }}>
-      <h1 style={{ fontSize: "1.75rem", fontWeight: "bold", marginBottom: "1rem" }}>퀴즈 랭킹</h1>
-      <ul style={{ width: "100%", maxWidth: "400px", textAlign: "left" }}>
-        {ranking.map((entry, index) => (
-          <li key={index} style={{ marginBottom: "0.5rem" }}>
-            {index + 1}. {entry.username} - {entry.score}점
-          </li>
-        ))}
-      </ul>
-      <div style={{ marginTop: "2rem", width: "100%", display: "flex", justifyContent: "center" }}>
-        <Link to="/">
-          <button
-            style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              backgroundColor: '#4b5563',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.375rem',
-              cursor: 'pointer'
-            }}
-          >
-            홈으로
-          </button>
-        </Link>
+    <div
+      style={{
+        minHeight: "100vh",
+        width: "100vw",
+        backgroundColor: "#1f2937", // 전체 배경
+        color: "white",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        paddingTop: "4rem",
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "800px",
+          backgroundColor: "#0f172a",
+          borderRadius: "1rem",
+          padding: "2rem",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}
+      >
+        <h1
+          style={{
+            fontSize: "1.75rem",
+            fontWeight: "bold",
+            marginBottom: "1.5rem",
+            textAlign: "center",
+          }}
+        >
+          🏆 최고 점수 랭킹
+        </h1>
+
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {ranking.map((entry, index) => (
+            <li
+              key={index}
+              style={{ marginBottom: "0.5rem", fontSize: "1.1rem" }}
+            >
+              <strong>
+                {index + 1}. {entry.username}
+              </strong>{" "}
+              - {entry.score}점
+            </li>
+          ))}
+        </ul>
+
+        <div style={{ marginTop: "2rem", textAlign: "center" }}>
+          <Link to="/">
+            <button
+              style={{
+                padding: "0.75rem 1.5rem",
+                fontSize: "1rem",
+                backgroundColor: "#4b5563",
+                color: "white",
+                border: "none",
+                borderRadius: "0.375rem",
+                cursor: "pointer",
+              }}
+            >
+              홈으로
+            </button>
+          </Link>
+        </div>
       </div>
     </div>
   );
